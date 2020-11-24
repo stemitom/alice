@@ -196,15 +196,15 @@ with timer("Processing dataset"):
     X_test = full_pipeline.transform(test_df)
     y_train = train_df['target'].astype('int').values
 
-# with timer("Performing Logistic Regression Operations"):
-#     time_split = TimeSeriesSplit(n_splits=10)
-#     #The used C values has been computed by using GridSearchCV on np.logspace(-2,2,20)
-#     logit = LogisticRegression(C=BEST_LOGIT_C, random_state=17, solver='liblinear', max_iter=1000)
-#     logit_cv_scores = cross_val_score(logit, X_train, y_train, cv=time_split, n_jobs=N_JOBS, scoring='roc_auc', verbose=True)
-#     print(f"Cross-Validation mean: {logit_cv_scores.mean()}")
-#     print(f"Cross-Validation std: {logit_cv_scores.std()}")
-#     logit.fit(X_train, y_train)
-#     logit_predicted_labels = logit.predict_proba(X_test)[:, 1]
+with timer("Performing Logistic Regression Operations"):
+    time_split = TimeSeriesSplit(n_splits=10)
+    #The used C values has been computed by using GridSearchCV on np.logspace(-2,2,20)
+    logit = LogisticRegression(C=BEST_LOGIT_C, random_state=17, solver='liblinear', max_iter=1000)
+    logit_cv_scores = cross_val_score(logit, X_train, y_train, cv=time_split, n_jobs=N_JOBS, scoring='roc_auc', verbose=True)
+    print(f"Cross-Validation mean: {logit_cv_scores.mean()}")
+    print(f"Cross-Validation std: {logit_cv_scores.std()}")
+    logit.fit(X_train, y_train)
+    logit_predicted_labels = logit.predict_proba(X_test)[:, 1]
 
 with timer('Performing Catboost Bayesian Optimization'):
     tuned_model = tune_with_bayes(X_train, y_train)
