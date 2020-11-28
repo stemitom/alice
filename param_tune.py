@@ -8,7 +8,7 @@ from lightgbm import LGBMClassifier
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
 import numpy as np
-from time import time()
+from time import time
 
 param_gridsearch = {
     'clf__learning_rate' : [0.01, 0.1, 1],
@@ -82,7 +82,7 @@ def coarse_search(estimator, parameters, X_train, y_train, optimizer='grid_searc
     return results, local_best_estimator
 
 
-def hp_param_tuner(param_space, model, X_train, y_train, num_eval, cv=5, scoring='accuracy'):
+def hyperopt_param_tuner(param_space, model, X_train, y_train, num_eval, cv=5, scoring='accuracy'):
     start = time()
 
     def objective_function(params):

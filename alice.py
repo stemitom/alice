@@ -30,6 +30,8 @@ from skopt.callbacks import DeadlineStopper, VerboseCallback, DeltaXStopper
 from skopt.space import Real, Categorical, Integer
 from time import time, ctime
 
+#Hyper parameter optimization
+from param_tune import hp_param_tuner
 DATA_DIR = '~/Desktop/python/DSML/ds_workspace/kaggle/datasets/alice/'
 OUTPUT_DIR = '~/Desktop/python/DSML/ds_workspace/kaggle/codebase/alice/output/'
 SEED = 17
