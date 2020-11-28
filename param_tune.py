@@ -129,6 +129,6 @@ def hyperopt_param_tuner(param_space, model, X_train, y_train, num_eval, cv=5, s
 
     return classifier_best, best_param
 
-lgb_clf, lgb_best_param = hp_param_tuner(lgb_param_space, LGBMClassifier, X_train, y_train, 75, 5, 'roc_auc')
-xgb_clf, xgb_best_param = hp_param_tuner(xgb_param_space, XGBClassifier, X_train, y_train, 75, 5, 'roc_auc')
-cb_clf, xgb_best_param = hp_param_tuner(xgb_param_space, CatBoostClassifier, X_train, y_train, 75, 5, 'roc_auc')
+lgb_clf, lgb_best_param = hyperopt_param_tuner(lgb_param_space, LGBMClassifier, X_train, y_train, 75, 5, 'roc_auc')
+xgb_clf, xgb_best_param = hyperopt_param_tuner(xgb_param_space, XGBClassifier, X_train, y_train, 75, 5, 'roc_auc')
+cb_clf, xgb_best_param = hyperopt_param_tuner(xgb_param_space, CatBoostClassifier, X_train, y_train, 75, 5, 'roc_auc')
