@@ -18,10 +18,13 @@ from sklearn.pipeline import FeatureUnion
 from sklearn.metrics import roc_auc_score, make_scorer
 from sklearn.linear_model import LogisticRegression
 
-#Catboost
+#Gradient Boosters
 from catboost import CatBoostClassifier
+import xgboost as xgb
 
-#Skopt functions
+#Hyper parameter optimzation options
+from hyperopt import Trials, tpe, hp, fmin
+from hyperopt import STATUS_OK
 from skopt import BayesSearchCV
 from skopt.callbacks import DeadlineStopper, VerboseCallback, DeltaXStopper
 from skopt.space import Real, Categorical, Integer
@@ -36,6 +39,7 @@ SITE_NGRAMS = (1,5)
 MAX_FEATURES = 50000
 BEST_LOGIT_C = 3.359818286283781
 vectorizer_params = {'ngram_range': (1,5), 'max_features': 50000, 'tokenizer': lambda s: s.split}
+time_split = TimeSeriesSplit(n_splits=10)
 
 times = ['time%s' % i for i in range(1,11)]
 train_df = pd.read_csv(os.path.join(DATA_DIR, 'train_sessions.csv'), index_col='session_id', parse_dates=times)
@@ -163,6 +167,25 @@ def tune_with_bayes(X_train, y_train):
     tuned_model.fit(X_train,y_train)
     return tuned_model
 
+
+def objective(space):
+    time_split = TimeSeriesSplit(n_splits=10)
+    ws.filterwarnings(action='ignore', category=DeprecationWarning)
+    xgb_clf = xgb.XGBClassifier(n_estimators = space['n_estimators'],
+                            max_depth = int(space['max_depth']),
+                            learning_rate = space['learning_rate'],
+                            gamma = space['gamma'],
+                            min_child_weight = space['min_child_weight'],
+                            subsample = space['subsample'],
+                            colsample_bytree = space['colsample_bytree']
+                            )
+    xgb_clf.fit(X_train, y_train)
+    # Applying k-Fold Cross Validation
+    accuracies = cross_val_score(estimator = xgb_clf, X = X_train, y = y_train, cv = time_split, scoring='roc_auc')
+    xgb_cv_mean = accuracies.mean()
+    print(f"XGB CV mean: {xgb_cv_mean}")
+    return {'loss':1-xgb_cv_mean, 'status': STATUS_OK }
+
 def write_to_submission_file(predicted_labels, out_file, target='target', index_label="session_id"):
     predicted_df = pd.DataFrame(predicted_labels,index = np.arange(1, predicted_labels.shape[0] + 1), columns=[target])
     predicted_df.to_csv(out_file, index_label=index_label)
@@ -197,12 +220,11 @@ with timer("Processing dataset"):
     y_train = train_df['target'].astype('int').values
 
 with timer("Performing Logistic Regression Operations"):
-    time_split = TimeSeriesSplit(n_splits=10)
     #The used C values has been computed by using GridSearchCV on np.logspace(-2,2,20)
     logit = LogisticRegression(C=BEST_LOGIT_C, random_state=17, solver='liblinear', max_iter=1000)
     logit_cv_scores = cross_val_score(logit, X_train, y_train, cv=time_split, n_jobs=N_JOBS, scoring='roc_auc', verbose=True)
-    print(f"Cross-Validation mean: {logit_cv_scores.mean()}")
-    print(f"Cross-Validation std: {logit_cv_scores.std()}")
+    print(f"LR Cross-Validation mean: {logit_cv_scores.mean()}")
+    print(f"LR Cross-Validation std: {logit_cv_scores.std()}")
     logit.fit(X_train, y_train)
     logit_predicted_labels = logit.predict_proba(X_test)[:, 1]
 
@@ -210,7 +232,49 @@ with timer('Performing Catboost Bayesian Optimization'):
     tuned_model = tune_with_bayes(X_train, y_train)
     cboost_predicted_labels = tuned_model.predict_proba(X_test)[:, 1]
     
+with timer("Performing Xgboost Bayesian Optimization"):
+    search_space = {
+        'max_depth' : hp.choice('max_depth', range(5, 30, 1)),
+        'learning_rate' : hp.quniform('learning_rate', 0.01, 0.5, 0.01),
+        'n_estimators' : hp.choice('n_estimators', range(20, 205, 5)),
+        'gamma' : hp.quniform('gamma', 0, 0.50, 0.01),
+        'min_child_weight' : hp.quniform('min_child_weight', 1, 10, 1),
+        'subsample' : hp.quniform('subsample', 0.1, 1, 0.01),
+        'colsample_bytree' : hp.quniform('colsample_bytree', 0.1, 1.0, 0.01)
+    }
+
+    trials = Trials()
+    best = fmin(fn=objective,
+                space=search_space,
+                algo=tpe.suggest,
+                max_evals=50,
+                trials=trials)
+    print(f"Best: {best}")
+    xgb_clf = xgb.XGBClassifier(n_estimators = best['n_estimators'],
+                            max_depth = best['max_depth'],
+                            learning_rate = best['learning_rate'],
+                            gamma = best['gamma'],
+                            min_child_weight = best['min_child_weight'],
+                            subsample = best['subsample'],
+                            colsample_bytree = best['colsample_bytree']
+                            )
+    xgb_cv_scores = cross_val_score(estimator=xgb_clf, X=X_train, y=y_train, cv=time_split, n_jobs=N_JOBS, scoring='roc_auc', verbose=True)
+    print(f"Final XGB Cross-Validation mean: {xgb_cv_scores.mean()}")
+    print(f"Final XGB Cross-Validation std: {xgb_cv_scores.std()}")
+    xgb_clf.fit(X_train, y_train)
+    xgb_predicted_labels = xgb_clf.predict_proba(X_test)[:, 1]
+
+    best = {'colsample_bytree': 0.22, 'gamma': 0.01, 'learning_rate': 0.13, 'max_depth': 22, 'min_child_weight': 1.0, 'n_estimators': 500, 'subsample': 0.59}
+    xgb_clf = xgb.XGBClassifier(**best)
+    xgb_cv_scores = cross_val_score(estimator=xgb_clf, X=X_train, y=y_train, cv=time_split, n_jobs=N_JOBS, scoring='roc_auc', verbose=True)
+    print(xgb_cv_scores.mean())
+    print(xgb_cv_scores.std())
+    xgb_clf.fit(X_train, y_train)
+    xgb_predicted_labels = xgb_clf.predict_proba(X_test)[:, 1]
+
+
 with timer("Submission"):
+    average_logit_xgb_labels = xgb_predicted_labels + logit_predicted_labels
     write_to_submission_file(logit_predicted_labels, os.path.join(OUTPUT_DIR, f'logit_{logit_cv_scores.mean()}.csv'))
-    write_to_submission_file(cboost_predicted_labels, os.path.join(OUTPUT_DIR, f'cboost_alice_subm_bayes.csv'))
-    
+    write_to_submission_file(xgb_predicted_labels, os.path.join(OUTPUT_DIR, f'xgb_{xgb_cv_scores.mean()}'))
+    write_to_submission_file(average_logit_xgb_labels, os.path.join(OUTPUT_DIR, f'avg_xgb_logit.csv'))
